@@ -96,12 +96,14 @@ References:
    ![here](files/noobaa-account-creation-1.png) 
    ![here](files/noobaa-account-creation-2.png)
 
-6. Create a new project on both sites for PGO deployment. 
+6. Fork CrunchyData Postgresql operator examples [repository](https://github.com/CrunchyData/postgres-operator-examples/fork) for easy startup and close to your local.
+
+7. Create a new project on both sites for PGO deployment. 
    ```
    % oc new-project pgo-int
    ```
 
-7. Create a pull secret for CrunchyData repository and add secret name to selectors.yaml file. 
+8. Create a pull secret for CrunchyData repository and add secret name to selectors.yaml file. 
    ```
    % oc create secret docker-registry crunchydata-pull-secret \
         --docker-username=user@example.com \
@@ -124,7 +126,7 @@ References:
           - name: crunchydata-pull-secret
    ```
 
-8. Prepare singlenamespace kustomization file for PGO deployment using kustomize
+9.  Prepare singlenamespace kustomization file for PGO deployment using kustomize
    ```
    # cat install/singlenamespace/kustomization.yaml
     namespace: pgo-int
@@ -158,7 +160,7 @@ References:
 
    ```
 
-9.  Deploy Operator with kustomize on both environments (Primary and Disaster recovery sites).
+11. Deploy Operator with kustomize on both environments (Primary and Disaster recovery sites).
   ```
   # oc apply -k install/singlenamespace
     customresourcedefinition.apiextensions.k8s.io/pgupgrades.postgres-operator.crunchydata.com unchanged
@@ -189,8 +191,8 @@ References:
   
 10. Prepare postgresql deployment files which uses S3 Buckets. Kustomize will be used for database deployment. Files are located under kustomize/s3/ path. Following changes should be done on mentioned files.
   
-    - Edit [s3.conf](files/postgresql-tower-int-kustomize/s3/s3.conf) file and define s3 access key and secret key variables you gathered at step 4. Alternatively; you can navigate at noobaa web page to Buckets and than click Connect Application button. Be sure you selected correct account you created at step 4.
-    - Edit [kustomization.yaml](files/postgresql-tower-int-kustomize/s3/kustomization.yaml) file. Correct namespace and s3 secret name.
+    - Edit s3.conf file and define s3 access key and secret key variables you gathered at step 4. Alternatively; you can navigate at noobaa web page to Buckets and than click Connect Application button. Be sure you selected correct account you created at step 4.
+    - Edit kustomization.yaml file. Correct namespace and s3 secret name.
     ```
     % cat kustomization.yaml 
     namespace: pgo-int
@@ -207,7 +209,7 @@ References:
     - postgres.yaml
 
     ```
-    - Edit [postgres.yaml](files/postgresql-tower-int-kustomize/s3/postgres.yaml) file for database deployment settings.
+    - Edit postgres.yaml file for database deployment settings.
     ```
     # cat s3/postgres.yaml
     apiVersion: postgres-operator.crunchydata.com/v1beta1
