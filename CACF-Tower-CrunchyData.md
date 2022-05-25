@@ -100,7 +100,7 @@ References:
 
 7. Create a new project on both sites for PGO deployment. 
    ```
-   % oc new-project pgo-int
+   % oc new-project pgo
    ```
 
 8. Create a pull secret for CrunchyData repository and add secret name to selectors.yaml file. 
@@ -109,7 +109,7 @@ References:
         --docker-username=user@example.com \
         --docker-password=***** \
         --docker-server=registry.crunchydata.com \
-        --namespace=pgo-int
+        --namespace=pgo
         secret/crunchydata-pull-secret created  
    % cat install/singlenamespace/selectors.yaml
       # We add the app version as a "commonLabel" and change it with each release.
@@ -129,10 +129,10 @@ References:
 9.  Prepare singlenamespace kustomization file for PGO deployment using kustomize
    ```
    # cat install/singlenamespace/kustomization.yaml
-    namespace: pgo-int
+    namespace: pgo
 
     commonLabels:
-      app.kubernetes.io/name: pgo-int
+      app.kubernetes.io/name: pgo
       app.kubernetes.io/version: 5.0.5
 
     bases:
@@ -195,7 +195,7 @@ References:
     - Edit kustomization.yaml file. Correct namespace and s3 secret name.
     ```
     % cat kustomization.yaml 
-    namespace: pgo-int
+    namespace: pgo
 
     secretGenerator:
     - name: pgo-s3-creds-e1
@@ -215,7 +215,7 @@ References:
     apiVersion: postgres-operator.crunchydata.com/v1beta1
     kind: PostgresCluster
     metadata:
-      name: postgresql-tower-int
+      name: postgresql-tower
     spec:
       shutdown: false
       openshift: true
@@ -268,7 +268,7 @@ References:
                     storage: 1Ti
           - name: repo2
             s3:
-              bucket: "pgo-tower-int-bucket"
+              bucket: "pgo-tower-bucket"
               endpoint: "10.1.90.154:31974"
               region: "localcluster"
 
@@ -282,7 +282,7 @@ References:
             #compress-level: 1
 
             # S3 bucket for disaster recovery
-            #repo2-path: /pgbackrest/postgres-operator/postgresql-tower-int-s3/repo2
+            #repo2-path: /pgbackrest/postgres-operator/postgresql-tower-s3/repo2
             repo2-storage-verify-tls: "n"
             repo2-s3-uri-style: "path"
             repo2-retention-full: "15"
@@ -315,7 +315,7 @@ References:
               work_mem: 2MB
               password_encryption: md5
               archive_timeout: 600
-            pg_hba: ["local all all      trust","host postgresql-tower-int admin 10.128.0.0/14 md5","host postgresql-tower-int cacf_mon 10.128.0.0/14 md5"]
+            pg_hba: ["local all all      trust","host postgresql-tower admin 10.128.0.0/14 md5","host postgresql-tower cacf_mon 10.128.0.0/14 md5"]
       monitoring:
         pgmonitor:
           exporter:
@@ -341,38 +341,38 @@ References:
     ```
     # oc get pods -l postgres-operator.crunchydata.com/role=master
     NAME                                    READY   STATUS    RESTARTS   AGE
-    postgresql-tower-int-instance1-p9mt-0   4/4     Running   0          49m
-    # oc cp tower-int.db postgresql-tower-int-instance1-p9mt-0:/pgdata/tower-int.db
+    postgresql-tower-instance1-p9mt-0   4/4     Running   0          49m
+    # oc cp tower.db postgresql-tower-instance1-p9mt-0:/pgdata/tower.db
     Defaulting container name to database.
     
-    # oc rsh postgresql-tower-int-instance1-p9mt-0
+    # oc rsh postgresql-tower-instance1-p9mt-0
     Defaulting container name to database.
-    Use 'oc describe pod/postgresql-tower-int-instance1-p9mt-0 -n pgo-int' to see all of the containers in this pod.
+    Use 'oc describe pod/postgresql-tower-instance1-p9mt-0 -n pgo' to see all of the containers in this pod.
     sh-4.4$ cd /pgdata
     sh-4.4$ ls
-    nss_wrapper  postgres  postgres_exporter.pid  queries.yml  replication	sshd.pid  tower-int.db
-    sh-4.4$ pg_restore -v -j 10 --dbname="postgresql-tower-int" --clean /pgdata/tower-int.db
+    nss_wrapper  postgres  postgres_exporter.pid  queries.yml  replication	sshd.pid  tower.db
+    sh-4.4$ pg_restore -v -j 10 --dbname="postgresql-tower" --clean /pgdata/tower.db
 
     ```
 
 13. Create admin user on Primary DB for the first time.    
     ```
-    # oc rsh postgresql-tower-int-instance1-jfd6-0
+    # oc rsh postgresql-tower-instance1-jfd6-0
     Defaulting container name to database.
-    Use 'oc describe pod/postgresql-tower-int-instance1-jfd6-0 -n pgo-int' to see all of the containers in this pod.
-    sh-4.4$ psql -d postgresql-tower-int
+    Use 'oc describe pod/postgresql-tower-instance1-jfd6-0 -n pgo' to see all of the containers in this pod.
+    sh-4.4$ psql -d postgresql-tower
     psql (10.19)
     SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
     Type "help" for help.
 
-    postgresql-tower-int=# CREATE USER admin WITH SUPERUSER PASSWORD 'production postgresql admin pwds from previous tower deployment';
+    postgresql-tower=# CREATE USER admin WITH SUPERUSER PASSWORD 'production postgresql admin pwds from previous tower deployment';
     CREATE ROLE
 
     ```
 
 14. Check from repo-host pod and wait for backup will be completed. After restore backup will be triggered for repo1 and trigger for repo2 manually with following command after backup to repo1 completed.
     ```
-      # oc rsh postgresql-tower-int-repo-host-0
+      # oc rsh postgresql-tower-repo-host-0
       sh-4.4$ pgbackrest info
       stanza: db
           status: error (no valid backups, backup/expire running)
@@ -422,75 +422,53 @@ References:
             repo2: backup set size: 615.2MB, backup size: 615.2MB
     ```
 
-15. Deploy Ansible tower with official method and use secret postgresql-tower-pguser-admin to fill database related parts or edit secret with new db details.
-    - new deployment's inventory file
-    ```
-    # Database Settings
-    # =================
-
-    # Set pg_hostname if you have an external postgres server, otherwise
-    # a new postgres service will be created
-    pg_hostname=<host variable from secret postgresql-tower-pguser-admin >
-
-    # If using an external database, provide your existing credentials.
-    # If you choose to use the provided containerized Postgres depolyment, these
-    # values will be used when provisioning the database.
-    pg_username='admin'
-    pg_password='admin password from old deployment - created at step 13'
-    pg_database=<dbname variable from secret postgresql-tower-pguser-admin >
-    pg_port=5432
-    pg_sslmode='prefer'  # set to 'verify-full' for client-side enforced SSL
-
-    ```
-    - Secret ansible-tower-secrets should be changed. There are 2 scripts (credentials_py and environment_sh) with db data inside the secret. Update relevant data there.
-
-16. Scale up your Ansible Tower deployment.
-    ```
-    % ./setup_openshift.sh
-    ```
-    ** If environment has a http proxy no_proxy should be defined. Otherwise installation will fail.
-    ```
-    % export no_proxy=10.1.90.153,.oc4.cluster.local,10.0.0.0/8,127.0.0.1,localhost
-    ```
-
-    ```
-    % oc scale --replicas=1 deployment/ansible-tower -n tower-int
-    ```
-
-17. Make sure Ansible Tower on DR site is scaled down.
-    ```
-    % oc scale --replicas=0 deployment/ansible-tower -n tower-int
-
-18. With following same steps from Step 11 deploy DR Site as well. Do not restore db on DR. It will be restored by operator using S3 Bucket.
+15. Scale up your Ansible Tower deployment.
     
-19. Update postgresql-tower-int-pguser-admin secret on DR site to have right value on both ends. Openshift UI can be used.
-    
-20. [OPTIONAL] To Check replication, connect to DR postgresql pod and postgresql database and check database content.
     ```
-    # oc project tower-dr
-    Now using project "tower-dr" on server "https://api.oc4.cluster.local:6443".
-    # oc get pods
-    NAME                                 READY   STATUS      RESTARTS   AGE
-    pgo-55cf944576-pqt5m                 1/1     Running     0          3d
-    postgresql-tower-backup-t974-5v6nh   0/1     Completed   0          2d1h
-    postgresql-tower-primary-q959-0      2/2     Running     0          2d1h
-    # oc rsh postgresql-tower-primary-q959-0
+    % oc scale --replicas=1 deployment/ansible-tower -n tower
+    ```
+
+16. Make sure Ansible Tower on DR site is scaled down.
+    ```
+    % oc scale --replicas=0 deployment/ansible-tower -n tower
+
+17. With following same steps from Step 11 deploy DR Site as well. Do not restore db on DR. It will be restored by operator using S3 Bucket.
+    
+18. Update postgresql-tower-pguser-admin secret on DR site to have right value on both ends. Openshift UI can be used.
+    
+19. [OPTIONAL] To Check replication, connect to DR postgresql pod and postgresql database and check database content.
+    ```
+    $ oc login --token=***** --server=https://api..oc4.cluster.local:6443
+
+    $ oc project pgo
+    oAlready on project "pgo" on server "https://api..oc4.cluster.local:6443".
+    $ oc get pods
+    NAME                                    READY   STATUS             RESTARTS   AGE
+    pgo-847b8bf456-q4z9m                    1/1     Running            0          5d5h
+    pgo-upgrade-69c8b9bf85-hcx6j            0/1     ImagePullBackOff   0          5d5h
+    postgresql-tower-instance1-c7vc-0   4/4     Running            0          2d23h
+    postgresql-tower-instance1-jlrm-0   4/4     Running            0          2d23h
+    postgresql-tower-repo-host-0        1/1     Running            0          2d23h
+    $ oc get pods -l postgres-operator.crunchydata.com/role=master
+    NAME                                    READY   STATUS    RESTARTS   AGE
+    postgresql-tower-instance1-c7vc-0   4/4     Running   0          2d23h
+    $ oc rsh ^C
+    $ oc rsh postgresql-tower-instance1-c7vc-0
     Defaulting container name to database.
-    Use 'oc describe pod/postgresql-tower-primary-q959-0 -n tower-dr' to see all of the containers in this pod.
-    sh-4.4$ psql -h postgresql-tower-int-primary.pgo-int.svc -U admin -d postgresql-tower-int
-    Password for user admin:
-    psql (10.18)
-    SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+    Use 'oc describe pod/postgresql-tower-instance1-c7vc-0 -n pgo' to see all of the containers in this pod.
+    sh-4.4$ psql postgresql-tower
+    psql (10.19)
     Type "help" for help.
 
     postgresql-tower=# select * from auth_user where id=198;
-    id  |                                    password                                    | last_login | is_superuser | username | first_name | last_name |        email        | is_st
-    aff | is_active |          date_joined
-    -----+--------------------------------------------------------------------------------+------------+--------------+----------+------------+-----------+---------------------+------
-    ----+-----------+-------------------------------
-    198 | pbkdf2_sha256$150000$TnukMwglO9JV$TbfMotQhhKGYA0AuwJcG/4HKgy9mR+W8YeKqvQpvZBw= |            | f            | test-pr  | test-pr    |           | test-pr@example.com | f
-        | t         | 2021-10-26 09:04:47.918091+00
+    id  |                 password                  |          last_login           | is_superuser | username | first_name | last_name  |             email             | is_staff | is_acti
+    ve |          date_joined          
+    -----+-------------------------------------------+-------------------------------+--------------+----------+------------+------------+-------------------------------+----------+--------
+    ---+-------------------------------
+    198 | !wBCXL1TL9RldQNrI6xEdAc1WMe29EU6lhV3TlRmK | 2022-05-04 11:25:39.726061+00 | f            | test-pr | test-pr     | test-pr | test-pr@example.com | f        | t      
+      | 2021-11-04 12:58:37.324701+00
     (1 row)
+
 
     ```
 
@@ -503,23 +481,23 @@ References:
 
    You have access to 87 projects, the list has been suppressed. You can list all projects with ' projects'
 
-   Using project "pgo-int".
+   Using project "pgo".
 
    ```
 2. Run following command to start backup. Scale Ansible Tower down if needed.
    ```
-   # oc scale --replicas=0 deployment/ansible-tower -n tower-int
-   # oc annotate -n pgo-int postgrescluster postgresql-tower-int  --overwrite postgres-operator.crunchydata.com/pgbackrest-backup="$(date)"
+   # oc scale --replicas=0 deployment/ansible-tower -n tower
+   # oc annotate -n pgo postgrescluster postgresql-tower  --overwrite postgres-operator.crunchydata.com/pgbackrest-backup="$(date)"
    ```
 3. Backup process can be followed as below. Dedicated backup pod should be in completed status after backup has been completed.
    ```
     # oc get pods
     NAME                                                          READY   STATUS             RESTARTS   AGE
     ...
-    postgresql-tower-int-backup-lvg6-6rphp                        1/1     Running            0          9s
+    postgresql-tower-backup-lvg6-6rphp                        1/1     Running            0          9s
     ...
     
-    # oc logs -f postgresql-tower-int-backup-lvg6-6rphp
+    # oc logs -f postgresql-tower-backup-lvg6-6rphp
     time="2022-05-23T08:42:49Z" level=info msg="crunchy-pgbackrest starts"
     time="2022-05-23T08:42:49Z" level=info msg="debug flag set to false"
     time="2022-05-23T08:42:50Z" level=info msg="backrest backup command requested"
@@ -531,7 +509,7 @@ References:
     # oc get pods
     NAME                                                          READY   STATUS             RESTARTS   AGE
     ...
-    postgresql-tower-int-backup-lvg6-6rphp                        0/1     Completed          0          3m40s
+    postgresql-tower-backup-lvg6-6rphp                        0/1     Completed          0          3m40s
     ...
    ```
 
@@ -540,10 +518,10 @@ References:
    # oc get pods
     NAME                                                          READY   STATUS             RESTARTS   AGE
     ...
-    postgresql-tower-int-repo-host-0                              1/1     Running            0          2d20h
+    postgresql-tower-repo-host-0                              1/1     Running            0          2d20h
     ...
 
-    # oc rsh postgresql-tower-int-repo-host-0
+    # oc rsh postgresql-tower-repo-host-0
     sh-4.4$ pgbackrest info
     stanza: db
         status: ok
@@ -592,7 +570,7 @@ References:
    ```   
 5. Scale up Ansible tower
    ```
-   # oc scale --replicas=1 deployment/ansible-tower -n tower-int
+   # oc scale --replicas=1 deployment/ansible-tower -n tower
    ```
 
 ## Restore From a Backup on same cluster
@@ -602,9 +580,9 @@ References:
    # oc get pods
     NAME                                                          READY   STATUS             RESTARTS   AGE
     ...
-    postgresql-tower-int-repo-host-0                              1/1     Running            0          2d21h
+    postgresql-tower-repo-host-0                              1/1     Running            0          2d21h
 
-   # oc exec postgresql-tower-int-repo-host-0 -- pgbackrest info
+   # oc exec postgresql-tower-repo-host-0 -- pgbackrest info
     stanza: db
         status: ok
         cipher: none
@@ -630,14 +608,14 @@ References:
 
    # oc apply -k s3/
     secret/pgo-s3-creds-e1 unchanged
-    postgrescluster.postgres-operator.crunchydata.com/postgresql-tower-int configured
+    postgrescluster.postgres-operator.crunchydata.com/postgresql-tower configured
  
    ```
 
 2. Trigger restore with setting annotation.
    ```
-   # oc scale --replicas=0 deployment/ansible-tower -n tower-int
-   # oc annotate -n pgo-int postgrescluster postgresql-tower-int --overwrite postgres-operator.crunchydata.com/pgbackrest-restore=id1
+   # oc scale --replicas=0 deployment/ansible-tower -n tower
+   # oc annotate -n pgo postgrescluster postgresql-tower --overwrite postgres-operator.crunchydata.com/pgbackrest-restore=id1
    ```
 
 3. Restore process can be followed as below. Dedicated restore pod should be in completed status after restore has been completed. 
@@ -645,10 +623,10 @@ References:
    # oc get pods
     NAME                                                          READY   STATUS         RESTARTS   AGE
     ...
-    postgresql-tower-int-pgbackrest-restore-mbsh2                 0/1     Running          0          0s
+    postgresql-tower-pgbackrest-restore-mbsh2                 0/1     Running          0          0s
 
 
-    # oc logs -f postgresql-tower-int-pgbackrest-restore-mbsh2
+    # oc logs -f postgresql-tower-pgbackrest-restore-mbsh2
     2022-05-23 09:33:35.382 GMT [19] LOG:  listening on IPv6 address "::1", port 5432
     2022-05-23 09:33:35.382 GMT [19] LOG:  listening on IPv4 address "127.0.0.1", port 5432
     2022-05-23 09:33:35.387 GMT [19] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
@@ -701,7 +679,7 @@ References:
 
 4. Scale up Ansible tower
    ```
-   # oc scale --replicas=1 deployment/ansible-tower -n tower-int
+   # oc scale --replicas=1 deployment/ansible-tower -n tower
    ```
 
 5. Set restore as "false" in postgresql.yaml file and apply changes.
@@ -715,7 +693,7 @@ References:
         - --target="2022-05-23 08:49:24+00"
    # oc apply -k s3/
     secret/pgo-s3-creds-e1 unchanged
-    postgrescluster.postgres-operator.crunchydata.com/postgresql-tower-int configured
+    postgrescluster.postgres-operator.crunchydata.com/postgresql-tower configured
         
    ```
 
@@ -723,7 +701,7 @@ References:
 
 In disaster case, Primary database will be lost. Postgresql on Dr site with Ansible tower should be set as primary manually.
 
-1. On Disaster Recovery installation server, switch to pgo filesystem (example: /ansible_tower/pgo/postgresql-tower-int-kustomize). Change DR postgresql yaml [file](files/postgres-operator-examples/kustomize/s3/postgres.yaml) and be sure Standby set to false.
+1. On Disaster Recovery installation server, switch to pgo filesystem (example: /ansible_tower/pgo/postgresql-tower-kustomize). Change DR postgresql yaml [file](files/postgres-operator-examples/kustomize/s3/postgres.yaml) and be sure Standby set to false.
    ```
         shutdown: false
         .....
@@ -739,7 +717,7 @@ In disaster case, Primary database will be lost. Postgresql on Dr site with Ansi
 
 3. Scale up Ansible Tower on DR Site.
    ```
-   $ oc scale --replicas=1 deployment/ansible-tower -n tower-int
+   $ oc scale --replicas=1 deployment/ansible-tower -n tower
    ```
 
 ## Enable Primary Site
@@ -750,7 +728,7 @@ To prevent split brain; Primary site should be redeployed as standby and than pr
   ```
     % oc delete -k s3/
     secret "pgo-s3-creds-e1" deleted
-    postgrescluster.postgres-operator.crunchydata.com "postgresql-tower-int" deleted
+    postgrescluster.postgres-operator.crunchydata.com "postgresql-tower" deleted
 
   ```
 
@@ -766,7 +744,7 @@ To prevent split brain; Primary site should be redeployed as standby and than pr
 
     % oc apply -k s3/
     secret/pgo-s3-creds-e1 created
-    postgrescluster.postgres-operator.crunchydata.com/postgresql-tower-int created
+    postgrescluster.postgres-operator.crunchydata.com/postgresql-tower created
   ```
 
 3. Postgresql pod logs can be checked to see if restore ended or not. Pod logs should have following entry "standby with lock"
@@ -843,23 +821,23 @@ To prevent split brain; Primary site should be redeployed as standby and than pr
 
     You have access to 72 projects, the list has been suppressed. You can list all projects with ' projects'
 
-    Using project "pgo-int".
-    $ oc project pgo-int
-    Already on project "pgo-int" on server "https://api.oc4.cluster.local:6443".
+    Using project "pgo".
+    $ oc project pgo
+    Already on project "pgo" on server "https://api.oc4.cluster.local:6443".
 
     $ oc get pods -l postgres-operator.crunchydata.com/role=master
     NAME                                    READY   STATUS    RESTARTS   AGE
-    postgresql-tower-int-instance1-c7vc-0   4/4     Running   0          2d23h
+    postgresql-tower-instance1-c7vc-0   4/4     Running   0          2d23h
 
-    $ oc rsh postgresql-tower-int-instance1-c7vc-0
+    $ oc rsh postgresql-tower-instance1-c7vc-0
     Defaulting container name to database.
-    Use 'oc describe pod/postgresql-tower-int-instance1-c7vc-0 -n pgo-int' to see all of the containers in this pod.
+    Use 'oc describe pod/postgresql-tower-instance1-c7vc-0 -n pgo' to see all of the containers in this pod.
     
-    sh-4.4$ psql postgresql-tower-int
+    sh-4.4$ psql postgresql-tower
     psql (10.19)
     Type "help" for help.
 
-    postgresql-tower-int=# select * from auth_user where id=198;
+    postgresql-tower=# select * from auth_user where id=198;
     id  |                 password                  |          last_login           | is_superuser | username | first_name | last_name  |             email             | is_staff | is_acti
     ve |          date_joined          
     -----+-------------------------------------------+-------------------------------+--------------+----------+------------+------------+-------------------------------+----------+--------
@@ -895,7 +873,7 @@ To prevent split brain; Primary site should be redeployed as standby and than pr
     ```
     - Scale up DR Ansible Tower
     ```
-    % oc scale --replicas=1 deployment/ansible-tower -n tower-int 
+    % oc scale --replicas=1 deployment/ansible-tower -n tower 
     ```
 
 3. Activate Primary as standby. Needs a reinstall to prevent split brain so postgresql cluster leftovers should be removed. After applying standby, need to wait until restore is complete.
@@ -904,7 +882,7 @@ To prevent split brain; Primary site should be redeployed as standby and than pr
     ```    
     % oc delete -k s3/
     secret "pgo-s3-creds-e1" deleted
-    postgrescluster.postgres-operator.crunchydata.com "postgresql-tower-int" deleted
+    postgrescluster.postgres-operator.crunchydata.com "postgresql-tower" deleted
 
 
     % cat s3/postgres.yaml 
@@ -916,7 +894,7 @@ To prevent split brain; Primary site should be redeployed as standby and than pr
 
     % oc apply -k s3/
     secret/pgo-s3-creds-e1 created
-    postgrescluster.postgres-operator.crunchydata.com/postgresql-tower-int created
+    postgrescluster.postgres-operator.crunchydata.com/postgresql-tower created
     ```
 
 4. Shutdown Disaster Recovery Site and make Primary site as real primary again
@@ -944,7 +922,7 @@ To prevent split brain; Primary site should be redeployed as standby and than pr
 
     - Scale up Primary Ansible Tower
     ```
-    % oc scale --replicas=1 deployment/ansible-tower -n tower-int 
+    % oc scale --replicas=1 deployment/ansible-tower -n tower 
     ```    
 
 5. Activate E1 standby again.
@@ -952,7 +930,7 @@ To prevent split brain; Primary site should be redeployed as standby and than pr
     ```
     % oc delete -k s3/
     secret "pgo-s3-creds-e1" deleted
-    postgrescluster.postgres-operator.crunchydata.com "postgresql-tower-int" deleted
+    postgrescluster.postgres-operator.crunchydata.com "postgresql-tower" deleted
 
 
     % cat s3/postgres.yaml 
@@ -964,5 +942,5 @@ To prevent split brain; Primary site should be redeployed as standby and than pr
 
     % oc apply -k s3/
     secret/pgo-s3-creds-e1 created
-    postgrescluster.postgres-operator.crunchydata.com/postgresql-tower-int created    
+    postgrescluster.postgres-operator.crunchydata.com/postgresql-tower created    
     ```
